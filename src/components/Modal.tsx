@@ -1,26 +1,7 @@
 import * as React from "react";
 import * as PropTypes from "prop-types";
 import styled from "styled-components";
-
-import { Provider } from "./Provider";
-import {
-  MODAL_LIGHTBOX_CLASSNAME,
-  MODAL_CONTAINER_CLASSNAME,
-  MODAL_HITBOX_CLASSNAME,
-  MODAL_CARD_CLASSNAME
-} from "../constants";
-import { SimpleFunction, IProviderUserOptions, ThemeColors } from "../helpers";
-
-declare global {
-  // tslint:disable-next-line
-  interface Window {
-    ethereum: any;
-    BinanceChain: any;
-    web3: any;
-    celo: any;
-    updateWeb3Modal: any;
-  }
-}
+import { colors, transitions } from "../styles";
 
 interface ILightboxStyleProps {
   show: boolean;
@@ -31,9 +12,9 @@ interface ILightboxStyleProps {
 const SLightbox = styled.div<ILightboxStyleProps>`
   transition: opacity 0.1s ease-in-out;
   text-align: center;
-  position: fixed;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  width: 100vw;
+  height: 100vh;
   margin-left: -50vw;
   top: ${({ offset }) => (offset ? `-${offset}px` : 0)};
   left: 50%;
@@ -52,17 +33,9 @@ const SLightbox = styled.div<ILightboxStyleProps>`
   display: flex;
   justify-content: center;
   align-items: center;
-
-  & * {
-    box-sizing: border-box !important;
-  }
 `;
 
-interface IModalContainerStyleProps {
-  show: boolean;
-}
-
-const SModalContainer = styled.div<IModalContainerStyleProps>`
+const SModalContainer = styled.div`
   position: relative;
   width: 100%;
   height: 100%;
@@ -70,9 +43,6 @@ const SModalContainer = styled.div<IModalContainerStyleProps>`
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: ${({ show }) => (show ? 1 : 0)};
-  visibility: ${({ show }) => (show ? "visible" : "hidden")};
-  pointer-events: ${({ show }) => (show ? "auto" : "none")};
 `;
 
 const SHitbox = styled.div`
@@ -83,128 +53,134 @@ const SHitbox = styled.div`
   bottom: 0;
 `;
 
-interface IModalCardStyleProps {
-  show: boolean;
-  themeColors: ThemeColors;
-  maxWidth?: number;
+interface ICloseButtonStyleProps {
+  size: number;
+  color: string;
+  onClick?: any;
 }
 
-const SModalCard = styled.div<IModalCardStyleProps>`
-  position: relative;
-  width: 100%;
-  background-color: ${({ themeColors }) => themeColors.background};
-  border-radius: 12px;
-  margin: 10px;
-  padding: 0;
-  opacity: ${({ show }) => (show ? 1 : 0)};
-  visibility: ${({ show }) => (show ? "visible" : "hidden")};
-  pointer-events: ${({ show }) => (show ? "auto" : "none")};
-
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  max-width: ${({ maxWidth }) => (maxWidth ? `${maxWidth}px` : "800px")};
-  min-width: fit-content;
-  max-height: 100%;
-  overflow: auto;
-
-  @media screen and (max-width: 768px) {
-    max-width: ${({ maxWidth }) => (maxWidth ? `${maxWidth}px` : "500px")};
-    grid-template-columns: 1fr;
+const SCloseButton = styled.div<ICloseButtonStyleProps>`
+  transition: ${transitions.short};
+  position: absolute;
+  width: ${({ size }) => `${size}px`};
+  height: ${({ size }) => `${size}px`};
+  right: ${({ size }) => `${size / 1.6667}px`};
+  top: ${({ size }) => `${size / 1.6667}px`};
+  opacity: 0.5;
+  cursor: pointer;
+  &:hover {
+    opacity: 1;
+  }
+  &:before,
+  &:after {
+    position: absolute;
+    content: " ";
+    height: ${({ size }) => `${size}px`};
+    width: 2px;
+    background: ${({ color }) => `rgb(${colors[color]})`};
+  }
+  &:before {
+    transform: rotate(45deg);
+  }
+  &:after {
+    transform: rotate(-45deg);
   }
 `;
 
-interface IModalProps {
-  themeColors: ThemeColors;
-  userOptions: IProviderUserOptions[];
-  onClose: SimpleFunction;
-  resetState: SimpleFunction;
-  lightboxOpacity: number;
-}
+const SCard = styled.div`
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  padding: 25px;
+  background-color: rgb(${colors.white});
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+`;
+
+const SModalContent = styled.div`
+  position: relative;
+  width: 100%;
+  position: relative;
+  word-wrap: break-word;
+`;
 
 interface IModalState {
+  offset: number;
+}
+
+interface IModalProps {
+  children: React.ReactNode;
   show: boolean;
-  lightboxOffset: number;
+  toggleModal: any;
+  opacity?: number;
 }
 
 const INITIAL_STATE: IModalState = {
-  show: false,
-  lightboxOffset: 0
+  offset: 0,
 };
 
-export class Modal extends React.Component<IModalProps, IModalState> {
-  constructor(props: IModalProps) {
-    super(props);
-    window.updateWeb3Modal = async (state: IModalState) => {
-      this.setState(state);
-    };
-  }
+class Modal extends React.Component<IModalProps, IModalState> {
   public static propTypes = {
-    userOptions: PropTypes.object.isRequired,
-    onClose: PropTypes.func.isRequired,
-    resetState: PropTypes.func.isRequired,
-    lightboxOpacity: PropTypes.number.isRequired
+    children: PropTypes.node.isRequired,
+    show: PropTypes.bool.isRequired,
+    toggleModal: PropTypes.func.isRequired,
+    opacity: PropTypes.number,
   };
 
-  public lightboxRef?: HTMLDivElement | null;
-  public mainModalCard?: HTMLDivElement | null;
+  public lightbox?: HTMLDivElement | null;
 
   public state: IModalState = {
-    ...INITIAL_STATE
+    ...INITIAL_STATE,
   };
 
-  public componentDidUpdate(prevProps: IModalProps, prevState: IModalState) {
-    if (prevState.show && !this.state.show) {
-      this.props.resetState();
-    }
-    if (this.lightboxRef) {
-      const lightboxRect = this.lightboxRef.getBoundingClientRect();
-      const lightboxOffset = lightboxRect.top > 0 ? lightboxRect.top : 0;
+  public componentDidUpdate() {
+    if (this.lightbox) {
+      const lightboxRect = this.lightbox.getBoundingClientRect();
+      const offset = lightboxRect.top > 0 ? lightboxRect.top : 0;
 
-      if (
-        lightboxOffset !== INITIAL_STATE.lightboxOffset &&
-        lightboxOffset !== this.state.lightboxOffset
-      ) {
-        this.setState({ lightboxOffset });
+      if (offset !== INITIAL_STATE.offset && offset !== this.state.offset) {
+        this.setState({ offset });
       }
     }
   }
 
-  public render = () => {
-    const { show, lightboxOffset } = this.state;
+  public toggleModal = async () => {
+    const d = typeof window !== "undefined" ? document : "";
+    const body = d ? d.body || d.getElementsByTagName("body")[0] : "";
+    if (body) {
+      if (this.props.show) {
+        body.style.position = "";
+      } else {
+        body.style.position = "fixed";
+      }
+    }
+    this.props.toggleModal();
+  };
 
-    const { onClose, lightboxOpacity, userOptions, themeColors } = this.props;
-
+  public render() {
+    const { offset } = this.state;
+    const { children, show, opacity } = this.props;
     return (
       <SLightbox
-        className={MODAL_LIGHTBOX_CLASSNAME}
-        offset={lightboxOffset}
-        opacity={lightboxOpacity}
-        ref={c => (this.lightboxRef = c)}
         show={show}
+        offset={offset}
+        opacity={opacity}
+        ref={(c) => (this.lightbox = c)}
       >
-        <SModalContainer className={MODAL_CONTAINER_CLASSNAME} show={show}>
-          <SHitbox className={MODAL_HITBOX_CLASSNAME} onClick={onClose} />
-          <SModalCard
-            className={MODAL_CARD_CLASSNAME}
-            show={show}
-            themeColors={themeColors}
-            maxWidth={userOptions.length < 3 ? 500 : 800}
-            ref={c => (this.mainModalCard = c)}
-          >
-            {userOptions.map(provider =>
-              !!provider ? (
-                <Provider
-                  name={provider.name}
-                  logo={provider.logo}
-                  description={provider.description}
-                  themeColors={themeColors}
-                  onClick={provider.onClick}
-                />
-              ) : null
-            )}
-          </SModalCard>
+        <SModalContainer>
+          <SHitbox onClick={this.toggleModal} />
+
+          <SCard>
+            <SCloseButton size={25} color={"dark"} onClick={this.toggleModal} />
+            <SModalContent>{children}</SModalContent>
+          </SCard>
         </SModalContainer>
       </SLightbox>
     );
-  };
+  }
 }
+
+export default Modal;
